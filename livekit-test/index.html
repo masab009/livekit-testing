@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LiveKit Test</title>
+</head>
+<body>
+    <button id="connectButton">Connect to Room</button>
+    <button id="leaveButton" disabled>Leave Room</button>
+    <script type="module">
+        import * as LiveKit from './public/livekit-client.esm.mjs';
+
+        const connectButton = document.getElementById('connectButton');
+        const leaveButton = document.getElementById('leaveButton');
+        const room = new LiveKit.Room();
+
+        async function fetchToken() {
+            try {
+                const response = await fetch('http://localhost:8000/get-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        room_name: 'voice-assistant-room',
+                        participant_identity: 'web-client'
+                    })
+                });
+                if (!response.ok) throw new Error(`Failed to fetch token: ${response.statusText}`);
+                const data = await response.json();
+                return data.token;
+            } catch (e) {
+                console.error('Token fetch error:', e);
+                throw e;
+            }
+        }
+
+        room.on('trackSubscribed', (track, publication, participant) => {
+            console.log('Track subscribed:', {
+                kind: track.kind,
+                sid: track.sid,
+                participant: participant.identity
+            });
+            if (track.kind === 'audio') {
+                try {
+                    const audioElement = document.createElement('audio');
+                    audioElement.autoplay = true;
+                    audioElement.controls = true; // Add controls for debugging
+                    audioElement.muted = false; // Ensure not muted
+                    audioElement.srcObject = new MediaStream([track.mediaStreamTrack]);
+                    document.body.appendChild(audioElement);
+                    console.log('Audio track attached to audio element');
+                } catch (e) {
+                    console.error('Error handling audio track:', e);
+                }
+            }
+        });
+
+        async function connect() {
+            try {
+                // Resume AudioContext if suspended
+                const audioContext = new AudioContext();
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                    console.log('AudioContext resumed');
+                }
+                const token = await fetchToken();
+                await room.connect('wss://jazz-sales-o2pqg79t.livekit.cloud', token);
+                console.log('Connected to room:', room.name);
+                connectButton.disabled = true;
+                leaveButton.disabled = false;
+            } catch (e) {
+                console.error('Connection error:', e);
+            }
+        }
+
+        function leaveRoom() {
+            room.disconnect();
+            console.log('Disconnected from room');
+            connectButton.disabled = false;
+            leaveButton.disabled = true;
+        }
+
+        // Attach event listeners
+        connectButton.addEventListener('click', connect);
+        leaveButton.addEventListener('click', leaveRoom);
+    </script>
+</body>
+</html>
